@@ -84,8 +84,8 @@ namespace {
         {
             custom_mock_scheduler sched;
 
-            auto query(ex::get_completion_scheduler_t<ex::set_value_t>)
-                const noexcept
+            auto query(
+                ex::get_completion_scheduler_t<ex::set_value_t>) const noexcept
             {
                 return sched;
             }
@@ -97,8 +97,8 @@ namespace {
         }
     };
 
-    inline custom_mock_scheduler::sender
-    custom_mock_scheduler::schedule() const noexcept
+    inline custom_mock_scheduler::sender custom_mock_scheduler::schedule()
+        const noexcept
     {
         return {};
     }
@@ -314,8 +314,7 @@ int hpx_main(int, char*[])
         HPX_TEST(ts.get_backend() != nullptr);
 
         std::atomic<bool> executed{false};
-        auto snd =
-            ex::schedule(ts) | ex::then([&]() { executed.store(true); });
+        auto snd = ex::schedule(ts) | ex::then([&]() { executed.store(true); });
 
         hpx::this_thread::experimental::sync_wait(snd);
         HPX_TEST(executed.load());
