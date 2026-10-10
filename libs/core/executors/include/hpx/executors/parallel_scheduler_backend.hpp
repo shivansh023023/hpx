@@ -96,7 +96,7 @@ namespace hpx::execution::experimental {
     // backend method so the backend can avoid heap allocation.
     // Backends that need more can fall back to their own allocation.
     HPX_CXX_CORE_EXPORT inline constexpr std::size_t
-        parallel_scheduler_storage_size = 256;
+        parallel_scheduler_storage_size = 512;
     HPX_CXX_CORE_EXPORT inline constexpr std::size_t
         parallel_scheduler_storage_alignment = alignof(std::max_align_t);
 
@@ -135,6 +135,14 @@ namespace hpx::execution::experimental {
         // Custom backends may implement it for their own comparisons.
         virtual bool equal_to(
             parallel_scheduler_backend const& other) const noexcept = 0;
+
+        // P3927R2: Query the forward progress guarantee of the backend.
+        virtual hpx::execution::experimental::forward_progress_guarantee
+        get_forward_progress_guarantee() const noexcept
+        {
+            return hpx::execution::experimental::forward_progress_guarantee::
+                concurrent;
+        }
 
         // Access the underlying thread pool scheduler (HPX-specific).
         // Returns nullptr if this backend doesn't wrap a thread_pool_policy_scheduler.

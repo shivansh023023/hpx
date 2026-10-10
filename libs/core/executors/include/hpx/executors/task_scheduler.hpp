@@ -8,6 +8,7 @@
 
 #include <hpx/config.hpp>
 
+#include <hpx/assert.hpp>
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/execution.hpp>
 #include <hpx/modules/execution_base.hpp>
@@ -129,15 +130,21 @@ namespace hpx::execution::experimental {
                 using receiver_concept =
                     hpx::execution::experimental::receiver_t;
                 parallel_scheduler_receiver_proxy* proxy_;
+                void (*destroy_)(void*) = nullptr;
+                void* storage_ = nullptr;
 
                 void set_value() noexcept
                 {
+                    if (destroy_ && storage_)
+                        destroy_(storage_);
                     proxy_->set_value();
                 }
 
                 template <typename Error = std::exception_ptr>
                 void set_error(Error ep) noexcept
                 {
+                    if (destroy_ && storage_)
+                        destroy_(storage_);
                     if constexpr (std::is_same_v<std::decay_t<Error>,
                                       std::exception_ptr>)
                     {
@@ -152,6 +159,8 @@ namespace hpx::execution::experimental {
 
                 void set_stopped() noexcept
                 {
+                    if (destroy_ && storage_)
+                        destroy_(storage_);
                     proxy_->set_stopped();
                 }
 
@@ -167,15 +176,21 @@ namespace hpx::execution::experimental {
                 using receiver_concept =
                     hpx::execution::experimental::receiver_t;
                 parallel_scheduler_bulk_item_receiver_proxy* proxy_;
+                void (*destroy_)(void*) = nullptr;
+                void* storage_ = nullptr;
 
                 void set_value() noexcept
                 {
+                    if (destroy_ && storage_)
+                        destroy_(storage_);
                     proxy_->set_value();
                 }
 
                 template <typename Error = std::exception_ptr>
                 void set_error(Error ep) noexcept
                 {
+                    if (destroy_ && storage_)
+                        destroy_(storage_);
                     if constexpr (std::is_same_v<std::decay_t<Error>,
                                       std::exception_ptr>)
                     {
@@ -190,6 +205,8 @@ namespace hpx::execution::experimental {
 
                 void set_stopped() noexcept
                 {
+                    if (destroy_ && storage_)
+                        destroy_(storage_);
                     proxy_->set_stopped();
                 }
 
@@ -218,11 +235,28 @@ namespace hpx::execution::experimental {
                             hpx::execution::experimental::schedule(scheduler_);
                         using op_state_t =
                             decltype(hpx::execution::experimental::connect(
-                                HPX_MOVE(snd), custom_receiver{&proxy}));
+                                HPX_MOVE(snd),
+                                custom_receiver{&proxy, nullptr, nullptr}));
+
+                        static_assert(sizeof(op_state_t) <=
+                                parallel_scheduler_storage_size,
+                            "wrapped scheduler operation state does not fit "
+                            "into backend storage");
+                        static_assert(alignof(op_state_t) <=
+                                parallel_scheduler_storage_alignment,
+                            "wrapped scheduler operation state is "
+                            "over-aligned");
+                        HPX_ASSERT(storage.size() >= sizeof(op_state_t));
+
+                        auto destroy_fn = [](void* ptr) {
+                            static_cast<op_state_t*>(ptr)->~op_state_t();
+                        };
 
                         auto* op = ::new (static_cast<void*>(storage.data()))
                             op_state_t(hpx::execution::experimental::connect(
-                                HPX_MOVE(snd), custom_receiver{&proxy}));
+                                HPX_MOVE(snd),
+                                custom_receiver{
+                                    &proxy, destroy_fn, storage.data()}));
                         hpx::execution::experimental::start(*op);
                     },
                     [&](std::exception_ptr ep) {
@@ -251,11 +285,29 @@ namespace hpx::execution::experimental {
                                 });
                         using op_state_t =
                             decltype(hpx::execution::experimental::connect(
-                                HPX_MOVE(snd), custom_bulk_receiver{&proxy}));
+                                HPX_MOVE(snd),
+                                custom_bulk_receiver{
+                                    &proxy, nullptr, nullptr}));
+
+                        static_assert(sizeof(op_state_t) <=
+                                parallel_scheduler_storage_size,
+                            "wrapped scheduler operation state does not fit "
+                            "into backend storage");
+                        static_assert(alignof(op_state_t) <=
+                                parallel_scheduler_storage_alignment,
+                            "wrapped scheduler operation state is "
+                            "over-aligned");
+                        HPX_ASSERT(storage.size() >= sizeof(op_state_t));
+
+                        auto destroy_fn = [](void* ptr) {
+                            static_cast<op_state_t*>(ptr)->~op_state_t();
+                        };
 
                         auto* op = ::new (static_cast<void*>(storage.data()))
                             op_state_t(hpx::execution::experimental::connect(
-                                HPX_MOVE(snd), custom_bulk_receiver{&proxy}));
+                                HPX_MOVE(snd),
+                                custom_bulk_receiver{
+                                    &proxy, destroy_fn, storage.data()}));
                         hpx::execution::experimental::start(*op);
                     },
                     [&](std::exception_ptr ep) {
@@ -284,11 +336,29 @@ namespace hpx::execution::experimental {
                                 });
                         using op_state_t =
                             decltype(hpx::execution::experimental::connect(
-                                HPX_MOVE(snd), custom_bulk_receiver{&proxy}));
+                                HPX_MOVE(snd),
+                                custom_bulk_receiver{
+                                    &proxy, nullptr, nullptr}));
+
+                        static_assert(sizeof(op_state_t) <=
+                                parallel_scheduler_storage_size,
+                            "wrapped scheduler operation state does not fit "
+                            "into backend storage");
+                        static_assert(alignof(op_state_t) <=
+                                parallel_scheduler_storage_alignment,
+                            "wrapped scheduler operation state is "
+                            "over-aligned");
+                        HPX_ASSERT(storage.size() >= sizeof(op_state_t));
+
+                        auto destroy_fn = [](void* ptr) {
+                            static_cast<op_state_t*>(ptr)->~op_state_t();
+                        };
 
                         auto* op = ::new (static_cast<void*>(storage.data()))
                             op_state_t(hpx::execution::experimental::connect(
-                                HPX_MOVE(snd), custom_bulk_receiver{&proxy}));
+                                HPX_MOVE(snd),
+                                custom_bulk_receiver{
+                                    &proxy, destroy_fn, storage.data()}));
                         hpx::execution::experimental::start(*op);
                     },
                     [&](std::exception_ptr ep) {
@@ -344,7 +414,7 @@ namespace hpx::execution::experimental {
                               __completes_on<Sender, task_scheduler, Env>)
             {
                 // Extract bulk parameters using structured binding
-                auto&& [tag, data, child] = sndr;
+                auto&& [tag, data, child] = HPX_FORWARD(Sender, sndr);
                 auto&& [pol, shape, f] = data;
 
                 // Get the task_scheduler from the bulk sender's env.
@@ -359,13 +429,14 @@ namespace hpx::execution::experimental {
                 constexpr bool is_parallel =
                     !is_sequenced_policy_v<std::decay_t<decltype(pol.__get())>>;
 
+                constexpr bool move_out = !std::is_lvalue_reference_v<Sender>;
+
                 return detail::task_bulk_sender<std::decay_t<decltype(child)>,
                     std::decay_t<decltype(f)>, is_chunked, is_parallel>{
                     task_sched.get_backend(),
                     static_cast<std::size_t>(is_parallel ? shape : 1),
-                    static_cast<std::size_t>(shape),
-                    HPX_FORWARD(decltype(f), f),
-                    HPX_FORWARD(decltype(child), child)};
+                    static_cast<std::size_t>(shape), move_out ? HPX_MOVE(f) : f,
+                    move_out ? HPX_MOVE(child) : child};
             }
             else
             {
