@@ -94,9 +94,8 @@ namespace hpx::execution::experimental {
                 return operation_state<std::decay_t<Receiver>>{
                     std::make_unique<virtual_parallel_bulk_op<F, IsChunked,
                         IsParallel, ChildSender, std::decay_t<Receiver>>>(
-                        HPX_MOVE(backend_), count_, actual_shape_,
-                        HPX_MOVE(f_), HPX_MOVE(child_),
-                        HPX_FORWARD(Receiver, rcvr))};
+                        HPX_MOVE(backend_), count_, actual_shape_, HPX_MOVE(f_),
+                        HPX_MOVE(child_), HPX_FORWARD(Receiver, rcvr))};
             }
 
             template <typename Receiver>
@@ -108,8 +107,7 @@ namespace hpx::execution::experimental {
                     std::make_unique<virtual_parallel_bulk_op<F, IsChunked,
                         IsParallel, ChildSender, std::decay_t<Receiver>>>(
                         backend_, count_, actual_shape_, f_,
-                        HPX_MOVE(child_copy),
-                        HPX_FORWARD(Receiver, rcvr))};
+                        HPX_MOVE(child_copy), HPX_FORWARD(Receiver, rcvr))};
             }
         };
 
@@ -218,8 +216,8 @@ namespace hpx::execution::experimental {
                     [&]() {
                         auto snd =
                             hpx::execution::experimental::schedule(scheduler_);
-                        using op_state_t = decltype(
-                            hpx::execution::experimental::connect(
+                        using op_state_t =
+                            decltype(hpx::execution::experimental::connect(
                                 HPX_MOVE(snd), custom_receiver{&proxy}));
 
                         auto* op = ::new (static_cast<void*>(storage.data()))
@@ -246,14 +244,13 @@ namespace hpx::execution::experimental {
                 hpx::detail::try_catch_exception_ptr(
                     [&]() {
                         auto snd =
-                            hpx::execution::experimental::schedule(
-                                scheduler_) |
+                            hpx::execution::experimental::schedule(scheduler_) |
                             hpx::execution::experimental::bulk(
                                 count, [&proxy](std::size_t i) {
                                     proxy.execute(i, i + 1);
                                 });
-                        using op_state_t = decltype(
-                            hpx::execution::experimental::connect(
+                        using op_state_t =
+                            decltype(hpx::execution::experimental::connect(
                                 HPX_MOVE(snd), custom_bulk_receiver{&proxy}));
 
                         auto* op = ::new (static_cast<void*>(storage.data()))
@@ -280,14 +277,13 @@ namespace hpx::execution::experimental {
                 hpx::detail::try_catch_exception_ptr(
                     [&]() {
                         auto snd =
-                            hpx::execution::experimental::schedule(
-                                scheduler_) |
+                            hpx::execution::experimental::schedule(scheduler_) |
                             hpx::execution::experimental::bulk(
                                 count, [&proxy](std::size_t i) {
                                     proxy.execute(i, i + 1);
                                 });
-                        using op_state_t = decltype(
-                            hpx::execution::experimental::connect(
+                        using op_state_t =
+                            decltype(hpx::execution::experimental::connect(
                                 HPX_MOVE(snd), custom_bulk_receiver{&proxy}));
 
                         auto* op = ::new (static_cast<void*>(storage.data()))
@@ -373,9 +369,8 @@ namespace hpx::execution::experimental {
             }
             else
             {
-                static_assert(
-                    hpx::execution::experimental::stdexec_internal::
-                        __completes_on<Sender, task_scheduler, Env>,
+                static_assert(hpx::execution::experimental::stdexec_internal::
+                                  __completes_on<Sender, task_scheduler, Env>,
                     "Cannot dispatch bulk algorithm to the task_scheduler: "
                     "no task_scheduler found in the environment. "
                     "Add a continues_on transition to the task_scheduler "
@@ -530,8 +525,8 @@ namespace hpx::execution::experimental {
                     std::type_info const& result_type,
                     void* result) const noexcept override
                 {
-                    using token_type = std::decay_t<decltype(
-                        hpx::execution::experimental::get_stop_token(
+                    using token_type = std::decay_t<
+                        decltype(hpx::execution::experimental::get_stop_token(
                             hpx::execution::experimental::get_env(receiver_)))>;
                     if (query_type ==
                             typeid(hpx::execution::experimental::
@@ -539,10 +534,10 @@ namespace hpx::execution::experimental {
                         result_type == typeid(token_type))
                     {
                         static_cast<std::optional<token_type>*>(result)
-                            ->emplace(hpx::execution::experimental::
-                                    get_stop_token(
-                                        hpx::execution::experimental::get_env(
-                                            receiver_)));
+                            ->emplace(
+                                hpx::execution::experimental::get_stop_token(
+                                    hpx::execution::experimental::get_env(
+                                        receiver_)));
                     }
                 }
             };
