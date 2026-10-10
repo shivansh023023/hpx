@@ -80,7 +80,7 @@ namespace hpx::execution::experimental {
 
         // P3804R2 Section 3.1: Const-qualified try_query
         template <typename P, typename Query>
-        std::optional<P> try_query(Query /* q */) const noexcept
+        [[nodiscard]] std::optional<P> try_query(Query /* q */) const noexcept
         {
             static_assert(std::is_object_v<P> && !std::is_array_v<P> &&
                     std::is_same_v<P, std::remove_cv_t<P>>,

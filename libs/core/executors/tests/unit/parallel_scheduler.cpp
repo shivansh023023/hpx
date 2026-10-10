@@ -10,7 +10,6 @@
 #include <hpx/modules/execution_base.hpp>
 #include <hpx/modules/synchronization.hpp>
 #include <hpx/modules/testing.hpp>
-#include <hpx/synchronization/stop_token.hpp>
 #include <hpx/thread.hpp>
 
 #include <atomic>
