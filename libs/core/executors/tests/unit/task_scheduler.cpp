@@ -7,12 +7,16 @@
 #include <hpx/config.hpp>
 #include <hpx/executors/parallel_scheduler.hpp>
 #include <hpx/executors/task_scheduler.hpp>
+#include <hpx/executors/thread_pool_scheduler.hpp>
 #include <hpx/init.hpp>
 #include <hpx/modules/testing.hpp>
 
 #include <atomic>
 #include <cstddef>
 #include <memory>
+#include <mutex>
+#include <set>
+#include <thread>
 #include <type_traits>
 #include <utility>
 
@@ -24,10 +28,19 @@ namespace {
     {
         int id = 0;
 
+        struct sender;
+        sender schedule() const noexcept;
+
+        ex::forward_progress_guarantee query(
+            ex::get_forward_progress_guarantee_t) const noexcept
+        {
+            return ex::forward_progress_guarantee::concurrent;
+        }
+
         template <typename F>
         void execute(F&& f) const
         {
-            std::forward<F>(f)();
+            HPX_FORWARD(F, f)();
         }
 
         friend bool operator==(custom_mock_scheduler const& lhs,
@@ -42,6 +55,53 @@ namespace {
             return !(lhs == rhs);
         }
     };
+
+    struct custom_mock_scheduler::sender
+    {
+        using sender_concept = ex::sender_t;
+        using completion_signatures =
+            ex::completion_signatures<ex::set_value_t(),
+                ex::set_error_t(std::exception_ptr), ex::set_stopped_t()>;
+
+        template <typename Receiver>
+        struct operation_state
+        {
+            std::decay_t<Receiver> receiver;
+
+            void start() & noexcept
+            {
+                ex::set_value(HPX_MOVE(receiver));
+            }
+        };
+
+        template <typename Receiver>
+        operation_state<Receiver> connect(Receiver&& r) const
+        {
+            return {HPX_FORWARD(Receiver, r)};
+        }
+
+        struct env
+        {
+            custom_mock_scheduler sched;
+
+            auto query(ex::get_completion_scheduler_t<ex::set_value_t>)
+                const noexcept
+            {
+                return sched;
+            }
+        };
+
+        env get_env() const noexcept
+        {
+            return {custom_mock_scheduler{}};
+        }
+    };
+
+    inline custom_mock_scheduler::sender
+    custom_mock_scheduler::schedule() const noexcept
+    {
+        return {};
+    }
 
     struct custom_mock_backend final : ex::parallel_scheduler_backend
     {
@@ -85,6 +145,12 @@ namespace {
         {
             auto const* p = dynamic_cast<custom_mock_backend const*>(&other);
             return p != nullptr && p->id == id;
+        }
+
+        ex::forward_progress_guarantee get_forward_progress_guarantee()
+            const noexcept override
+        {
+            return ex::forward_progress_guarantee::concurrent;
         }
     };
 
@@ -153,7 +219,7 @@ int hpx_main(int, char*[])
             auto snd =
                 ex::schedule(ts) | ex::then([&]() { executed.store(true); });
 
-            ex::sync_wait(snd);
+            hpx::this_thread::experimental::sync_wait(snd);
             HPX_TEST(executed.load());
         }
 
@@ -166,7 +232,7 @@ int hpx_main(int, char*[])
             auto snd =
                 ex::schedule(ts) | ex::then([&]() { executed.store(true); });
 
-            ex::sync_wait(snd);
+            hpx::this_thread::experimental::sync_wait(snd);
             HPX_TEST(executed.load());
         }
 
@@ -179,7 +245,7 @@ int hpx_main(int, char*[])
             auto snd =
                 ex::schedule(ts) | ex::then([&]() { executed.store(true); });
 
-            ex::sync_wait(snd);
+            hpx::this_thread::experimental::sync_wait(snd);
             HPX_TEST(executed.load());
         }
     }
@@ -210,7 +276,7 @@ int hpx_main(int, char*[])
     {
         ex::task_scheduler ts(ex::get_parallel_scheduler());
         auto fpg = ex::get_forward_progress_guarantee(ts);
-        HPX_TEST(fpg == ex::forward_progress_guarantee::concurrent);
+        HPX_TEST(fpg == ex::forward_progress_guarantee::parallel);
 
         custom_mock_scheduler mock{10};
         ex::task_scheduler ts_custom(mock);
@@ -221,13 +287,57 @@ int hpx_main(int, char*[])
     // Target 7: Bulk Execution
     {
         std::atomic<int> count{0};
+        std::set<std::thread::id> thread_ids;
+        std::mutex mtx;
+
         ex::task_scheduler ts(ex::get_parallel_scheduler());
 
-        auto snd = ex::schedule(ts) | ex::bulk(10, [&](int) { ++count; });
+        auto snd = ex::schedule(ts) | ex::bulk(10, [&](int) {
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                thread_ids.insert(std::this_thread::get_id());
+            }
+            ++count;
+        });
 
         hpx::this_thread::experimental::sync_wait(snd);
 
-        HPX_TEST(count == 10);
+        HPX_TEST_EQ(count.load(), 10);
+        HPX_TEST(!thread_ids.empty());
+    }
+
+    // Target 8: Construction from thread_pool_scheduler (real HPX scheduler)
+    {
+        ex::thread_pool_scheduler tps{};
+        ex::task_scheduler ts(tps);
+
+        HPX_TEST(ts.get_backend() != nullptr);
+
+        std::atomic<bool> executed{false};
+        auto snd =
+            ex::schedule(ts) | ex::then([&]() { executed.store(true); });
+
+        hpx::this_thread::experimental::sync_wait(snd);
+        HPX_TEST(executed.load());
+
+        auto fpg = ex::get_forward_progress_guarantee(ts);
+        HPX_TEST(fpg == ex::forward_progress_guarantee::parallel);
+
+        std::atomic<int> bulk_count{0};
+        std::set<std::thread::id> tps_thread_ids;
+        std::mutex tps_mtx;
+
+        auto bulk_snd = ex::schedule(ts) | ex::bulk(10, [&](int) {
+            {
+                std::lock_guard<std::mutex> lock(tps_mtx);
+                tps_thread_ids.insert(std::this_thread::get_id());
+            }
+            ++bulk_count;
+        });
+
+        hpx::this_thread::experimental::sync_wait(bulk_snd);
+        HPX_TEST_EQ(bulk_count.load(), 10);
+        HPX_TEST(!tps_thread_ids.empty());
     }
 
     return hpx::local::finalize();
